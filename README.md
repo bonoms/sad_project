@@ -71,20 +71,18 @@ The linked Sun-direction block has its own hardcoded annual period and obliquity
 
 ## Running the simulation
 
-Required folder structure:
+Download or clone the **complete repository** to any location. MATLAB and Simulink are required (tested with R2026b); no personal paths or external coursework folders are needed.
 
 ```text
-matlab/
-├── common/
-│   └── laythe.slx
-├── sad_library/
-│   └── SAD_Library.slx
-└── project/
-    ├── project.m
-    └── aura_mission.slx
+sad/
+├── project.m
+├── aura_mission.slx
+└── library/
+    ├── laythe.slx
+    └── SAD_Library.slx
 ```
 
-Run `project.m` in MATLAB. It initializes the parameters, loads both libraries, simulates the model and displays the attitude animation.
+Open `project.m` in MATLAB and click **Run**. Its first lines add the repository and its subfolders to the MATLAB path, then load the bundled libraries. No helper script or personal path is required; the complete repository can be moved or renamed without editing the code. Keep `aura_mission.slx` alongside `project.m` and the libraries in a repository subfolder.
 
 - **Solver:** fixed-step fourth-order Runge–Kutta (`ode4`).
 - **Step:** 0.1 s.

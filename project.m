@@ -1,10 +1,7 @@
 % load libraries and other files
 
 projectRoot = fileparts(mfilename('fullpath'));
-cd(projectRoot);
 addpath(genpath(projectRoot));
-
-addpath('/Users/bonoms/Desktop/uni/own_files/sad/matlab/common')
 load_system('laythe');
 
 %% constants
@@ -66,7 +63,7 @@ Area  = [2 2 0 3 6 6] * 1e-2;
 
 %% sim settings
 
-out = sim("aura_mission.slx", ...
+out = sim(fullfile(projectRoot, 'aura_mission.slx'), ...
     "StopTime", "10*T", ...
     "SolverType", "Fixed-step", ...
     "Solver", "ode4", ...
@@ -83,20 +80,29 @@ As = out.Ab_n;
 
 fig = figure('Color', 'w', 'Name', 'Attitude Kinematics Animation');
 hold on; grid on; axis equal;
+
 xlim([-1.5, 1.5]); ylim([-1.5, 1.5]); zlim([-1.5, 1.5]);
+
 view(3);
+
 hX = quiver3(0,0,0, 1,0,0, 0, 'r', 'LineWidth', 2.5, 'MaxHeadSize', 0.5);
 hY = quiver3(0,0,0, 0,1,0, 0, 'g', 'LineWidth', 2.5, 'MaxHeadSize', 0.5);
 hZ = quiver3(0,0,0, 0,0,1, 0, 'b', 'LineWidth', 2.5, 'MaxHeadSize', 0.5);
+
 for k = 1:100:N
+
     A = As(:, :, k);
+
     X_body = A(1, :); 
     Y_body = A(2, :);
     Z_body = A(3, :);
+
     set(hX, 'UData', X_body(1), 'VData', X_body(2), 'WData', X_body(3));
     set(hY, 'UData', Y_body(1), 'VData', Y_body(2), 'WData', Y_body(3));
     set(hZ, 'UData', Z_body(1), 'VData', Z_body(2), 'WData', Z_body(3));
+
     drawnow;
+
     pause(0.0001);
 end
 

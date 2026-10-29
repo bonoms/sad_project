@@ -17,6 +17,7 @@
 *.mltbx
 
 # Simulink generated folders
+generated/
 slprj/
 sccprj/
 codegen/
