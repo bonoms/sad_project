@@ -76,7 +76,7 @@ out = sim("aura_mission.slx", ...
 
 %% plots
 
-% plot 1
+% plot 1 of attitude dcm in intertial frame
 
 N = length(out.tout);
 As = out.Ab_n;
