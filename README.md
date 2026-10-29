@@ -89,22 +89,6 @@ Open `project.m` in MATLAB and click **Run**. Its first lines add the repository
 - **Requested duration:** ten orbital periods, with `T = 2*pi/sqrt(mu_E/a^3)`.
 - **Main outputs:** `out.Ab_n` (attitude DCM), `out.w` (body angular velocity) and `out.dist_torque` (summed disturbance torque).
 
-## Verification completed
-
-The dynamics, orbit, coordinate transformations and disturbance blocks have been checked using analytical reference cases and real MATLAB/Simulink execution. Checks include torque-free energy/angular-momentum conservation, constant-torque response, known-axis rotations, orbital radius consistency and independent torque-formula comparisons.
-
-An Euler 312/313 switching implementation produced singularity warnings and timestep-dependent attitude errors. The active simulation now uses the existing **DCM propagation block** instead; the Euler propagation/conversion path is commented out.
-
-The updated entry script was tested in **MATLAB/Simulink R2026b** over approximately ten orbits: **560,516 samples**, final time **56,051.5 s**, finite attitude and angular-rate outputs, and no execution warnings. Separate DCM tests confirmed orthogonality and timestep convergence. These checks establish numerical consistency for the tested cases, not flight-model accuracy.
-
-## Remaining work
-
-- Add aerodynamic disturbance torque.
-- Add Earth-shadow/eclipse gating to direct SRP.
-- Refine inertia, face geometry, pressure-centre offsets and residual dipole assumptions.
-- Add magnetic actuator limits, sensor models, attitude estimation and detumbling/pointing control.
-- Test nonzero deployment rates and a wider range of initial attitudes and environmental conditions.
-
 ## Mission references
 
 - [ESA: GOMX-4B mission overview](https://www.esa.int/Enabling_Support/Space_Engineering_Technology/Technology_CubeSats/GOMX-4B).
