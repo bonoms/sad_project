@@ -77,12 +77,11 @@ Download or clone the **complete repository** to any location. MATLAB and Simuli
 sad/
 ├── project.m
 ├── aura_mission.slx
-└── library/
-    ├── laythe.slx
-    └── SAD_Library.slx
+├── project_lib.slx
+└── slblocks.m
 ```
 
-Open `project.m` in MATLAB and click **Run**. Its first lines add the repository and its subfolders to the MATLAB path, then load the bundled libraries. No helper script or personal path is required; the complete repository can be moved or renamed without editing the code. Keep `aura_mission.slx` alongside `project.m` and the libraries in a repository subfolder.
+Open `project.m` in MATLAB and click **Run**. Its first lines add the repository and its subfolders to the MATLAB path, load the adjacent `project_lib.slx` by its absolute path derived from the script location, and refresh Library Browser registration. `slblocks.m` supplies the display name **SAD Project**. No separate setup command or personal path is required; the complete repository can be moved or renamed without editing the code. Keep all four files above together and include them in Git commits.
 
 - **Solver:** fixed-step fourth-order Runge–Kutta (`ode4`).
 - **Step:** 0.1 s.

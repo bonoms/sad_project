@@ -2,7 +2,8 @@
 
 projectRoot = fileparts(mfilename('fullpath'));
 addpath(genpath(projectRoot));
-load_system('laythe');
+load_system(fullfile(projectRoot, 'project_lib.slx'));
+sl_refresh_customizations; 
 
 %% constants
 
@@ -105,4 +106,3 @@ for k = 1:100:N
 
     pause(0.0001);
 end
-
