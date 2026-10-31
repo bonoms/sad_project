@@ -6,17 +6,19 @@ clc;
 
 projectRoot = fileparts(mfilename('fullpath'));
 addpath(genpath(projectRoot));
-load_system('laythe');
 
 %% Physical Constants
 
 mu_E = astroConstants(13);
-R_E  = astroConstants(23);
-w_E = 2 * pi / (astroConstants(53) * 3600);
-eps_E = astroConstants(63);
+R_E = astroConstants(23);
+f_E = astroConstants(43);
+Re_E = 3 * R_E / (3 - f_E); 
+omega_E = 2 * pi / (astroConstants(53) * 3600);
+eps_E = deg2rad(astroConstants(63));
+dipole_tilt_E = deg2rad(11.5);
 T_sun = 365.256363 * 24 * 3600;
 
-%% Orbital Parameters
+%% Spacecraft Orbital Parameters
 
 % Keplerian elements
 height = 449;
@@ -39,7 +41,7 @@ I = diag([Ix Iy Iz]);
 I_inv = inv(I);
 
 % Flowing current
-j_b = [0.01 0.05 0.01];
+j_B = [0.01 0.05 0.01];
 
 % Panels normals
 N_B = [1 0 0;
@@ -69,13 +71,13 @@ rho_d = [0.05 0.05 0.05 0.05 0.05 0.05];
 %% Initial conditions
 
 % True anomaly
-ta = 0;
+ta0 = 0;
 
 % Angular velocity
-wx_0 = deg2rad(1);
-wy_0 = deg2rad(1);
-wz_0 = deg2rad(1);
-w_0 = [wx_0, wy_0, wz_0]*0;
+omegax0 = deg2rad(1);
+omegay0 = deg2rad(1);
+omegaz0 = deg2rad(1);
+omega0 = [omegax0; omegay0; omegaz0] * 0;
 
 % Attitude
 e0 = [0 0 0]';
@@ -85,7 +87,7 @@ A0 = eye(3,3); % not necessary but to make dcm block work
 
 % Simulation parameters
 stopTime = T * 3;
-fixedStep = 0.1;
+fixedStep = 0.1; % s
 
 % Simulink model
 out = sim(fullfile(projectRoot, 'aura_mission.slx'), ...
@@ -95,13 +97,15 @@ out = sim(fullfile(projectRoot, 'aura_mission.slx'), ...
     "FixedStep", "fixedStep", ...
     "ReturnWorkspaceOutputs", "on");
 
+% Data extraction
+N = length(out.tout);
+ts = out.tout;
+As_BN = out.A_BN;
+
 
 %% Visualization
 
-N = length(out.tout);
-As = out.Ab_n;
-
-fig = figure('Color', 'w', 'Name', 'Attitude Kinematics Animation');
+figure('Color', 'w', 'Name', 'Attitude Kinematics Animation');
 hold on; grid on; axis equal;
 
 xlim([-1.5, 1.5]); ylim([-1.5, 1.5]); zlim([-1.5, 1.5]);
@@ -114,7 +118,7 @@ hZ = quiver3(0,0,0, 0,0,1, 0, 'b', 'LineWidth', 2.5, 'MaxHeadSize', 0.5);
 
 for k = 1:100:N
 
-    A = As(:, :, k);
+    A = As_BN(:, :, k);
 
     X_body = A(1, :); 
     Y_body = A(2, :);
