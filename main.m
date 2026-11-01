@@ -5,7 +5,8 @@ close all;
 clc;
 
 projectRoot = fileparts(mfilename('fullpath'));
-addpath(genpath(projectRoot));
+addpath(projectRoot, fullfile(projectRoot, 'library'));
+load_system(fullfile(projectRoot, 'library', 'library.slx'));
 
 %% Physical Constants
 

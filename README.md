@@ -9,7 +9,7 @@ The reference scenario is a **near-polar, approximately Sun-synchronous low Eart
 Implemented so far:
 - Keplerian orbit propagation with nonzero eccentricity.
 - Nonlinear rigid-body rotational dynamics.
-- Inertial-to-body direction cosine matrix (DCM) propagation.
+- Switched Euler 3-1-2 / 3-1-3 attitude kinematics, converted to an inertial-to-body direction cosine matrix (DCM).
 - Gravity-gradient disturbance torque.
 - Residual magnetic-dipole torque using a rotating, tilted Earth-dipole field model.
 - Six-face solar radiation pressure (SRP), including absorption, specular and diffuse reflection.
@@ -24,25 +24,25 @@ Values below describe the **current saved simulation**, not verified GOMX-4B fli
 | Spacecraft class | 6U CubeSat | Mission concept |
 | Reference mass | Approximately 8 kg | Background mission reference; not an explicit input to the current rotational model |
 | Inertia matrix | `diag([0.087, 0.067, 0.033]) kg·m²` | Assumed diagonal rigid-body inertia |
-| Orbit size parameter | `h = 449 km` | Defined as `a − R_E`; not constant instantaneous altitude because eccentricity is nonzero |
-| Semi-major axis | `a = R_E + h` | Derived orbit parameter |
-| Eccentricity | `e = 0.002` | Prescribed orbit parameter |
-| Inclination | `i = 97.32°` | Prescribed near-polar orbit parameter |
-| Initial true anomaly | `theta_0 = 0 rad` | Starts at perigee |
+| Orbit size parameter | `height = 449 km` | Defined as `sma − R_E`; not constant instantaneous altitude because eccentricity is nonzero |
+| Semi-major axis | `sma = R_E + height` | Derived orbit parameter |
+| Eccentricity | `ecc = 0.002` | Prescribed orbit parameter |
+| Inclination | `inc = deg2rad(97.32)` | Prescribed near-polar orbit parameter |
+| Initial true anomaly | `ta0 = 0 rad` | Starts at perigee |
 | Initial angular velocity | `[0, 0, 0] rad/s` | Body relative to inertial space, expressed in body axes |
-| Initial attitude | `A0 = eye(3)` | Body axes initially aligned with inertial axes |
-| Initial Euler angles | `e0 = [0; 0; 0] rad` | Retained initialization for the disabled Euler path |
-| Residual magnetic dipole | `j_b = [0.01, 0.05, 0.01] A·m²` | Assumed constant body-frame disturbance dipole; **not electric current or a commanded actuator dipole** |
+| Initial attitude | Identity DCM, implied by `e0` | Body axes initially aligned with inertial axes; `A0` is retained in the script but is not the active initialization input |
+| Initial Euler angles | `e0 = [0; 0; 0] rad` | Initial attitude for the active switched Euler kinematics |
+| Residual magnetic dipole | `j_B = [0.01, 0.05, 0.01] A·m²` | Assumed constant body-frame disturbance dipole; **not electric current or a commanded actuator dipole** |
 
-Although `wx_0`, `wy_0` and `wz_0` are each assigned 1°/s, the assembled `w_0` vector is multiplied by zero. Therefore, the current experiment starts at rest; it does **not** use an Ariane 6 release-rate scenario or test detumbling.
+Although `omegax0`, `omegay0` and `omegaz0` are each assigned 1°/s, the assembled `omega0` vector is multiplied by zero. Therefore, the current experiment starts at rest; it does **not** use an Ariane 6 release-rate scenario or test detumbling.
 
 ### Environmental constants
 
 | Parameter | Value |
 |---|---|
-| Earth gravitational parameter | `mu_E = 398600.4418 km³/s²` |
-| Earth reference radius | `R_E = 6371 km` |
-| Earth rotation rate | `w_E = 7.292115e-5 rad/s` |
+| Earth gravitational parameter | `mu_E = 398600.433 km³/s²`, from `astroConstants(13)` |
+| Earth reference radius | `R_E = 6371.01 km`, from `astroConstants(23)` |
+| Earth rotation rate | `omega_E ≈ 7.29210659088e-5 rad/s`, derived from `astroConstants(53)` |
 | Magnetic-field scale in the model | `H_0 = 2.98059e-5 T` |
 | Magnetic-axis tilt in the model | `0.200713 rad` |
 | Solar irradiance in the SRP block | `1358 W/m²` |
@@ -67,7 +67,7 @@ r_F = [0.05 -0.25  0     0     0     0;
        0     0     0     0     0.05 -0.05];
 ```
 
-The linked Sun-direction block has its own hardcoded annual period and obliquity. The script also declares `T_sun`, `r_sun` and `epsilon`, but changing those declarations alone does not change that linked block.
+The linked Sun-direction block has its own hardcoded annual period (`31558149.76 s`) and obliquity (`0.4091 rad`). The script declares `T_sun` and `eps_E`, but changing those declarations alone does not change that linked block.
 
 ## Running the simulation
 
@@ -75,18 +75,36 @@ Download or clone the **complete repository** to any location. MATLAB and Simuli
 
 ```text
 sad/
-├── project.m
+├── main.m
 ├── aura_mission.slx
-├── project_lib.slx
-└── slblocks.m
+├── library/
+│   ├── library.slx
+│   ├── astroConstants.m
+│   └── slblocks.m
+└── project.m              # Legacy script; not the current entry point
 ```
 
-Open `project.m` in MATLAB and click **Run**. Its first lines add the repository and its subfolders to the MATLAB path, load the adjacent `project_lib.slx` by its absolute path derived from the script location, and refresh Library Browser registration. `slblocks.m` supplies the display name **SAD Project**. No separate setup command or personal path is required; the complete repository can be moved or renamed without editing the code. Keep all four files above together and include them in Git commits.
+Open `main.m` in MATLAB and click **Run**. It adds the repository root and `library/` to the MATLAB path, loads `library/library.slx` using the script's absolute location, initializes the workspace, runs `aura_mission.slx`, and animates the body axes. No personal paths or external library files are required. Keep the directory structure above intact when moving or cloning the repository.
+
+`project.m` is an older script that still expects `project_lib.slx` and uses different workspace variable names. **Use `main.m`, not `project.m`, for the current model.**
 
 - **Solver:** fixed-step fourth-order Runge–Kutta (`ode4`).
 - **Step:** 0.1 s.
-- **Requested duration:** ten orbital periods, with `T = 2*pi/sqrt(mu_E/a^3)`.
-- **Main outputs:** `out.Ab_n` (attitude DCM), `out.w` (body angular velocity) and `out.dist_torque` (summed disturbance torque).
+- **Requested duration:** three orbital periods (`stopTime = 3*T`), with `T = 2*pi/sqrt(mu_E/sma^3)`. The final logged time follows the 0.1 s fixed-step grid.
+- **Outputs:** `out.tout` (time in seconds), `out.A_BN` (3×3×N attitude DCM array), and `out.omega` (3×1×N body angular velocity array, rad/s). The summed disturbance torque is not currently exported as a separate output.
+- **Animation:** red, green, and blue arrows show the body X, Y, and Z axes; every 100th logged sample is displayed.
+
+### Library loading and maintenance
+
+The model's custom block links reference `library/...`, matching `library/library.slx`. If MATLAB reports a missing `project_lib`, the model contains stale links from the old library name; loading `library.slx` alone does not repair those references. Use the updated model and library together.
+
+`library/slblocks.m` registers the library as **SAD Project** in the Simulink Library Browser. Browser registration is optional for simulation. To refresh it after running the initialization, use:
+
+```matlab
+sl_refresh_customizations;
+```
+
+The Euler-313 kinematics block guards its denominators while its integrator is held in reset (the inactive branch). This avoids division-by-zero warnings at the zero-angle initial attitude without changing the active kinematics equations. It does not remove the mathematical singularities of Euler angles in general.
 
 ## Mission references
 
