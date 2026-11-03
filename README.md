@@ -77,16 +77,19 @@ Download or clone the **complete repository** to any location. MATLAB and Simuli
 sad/
 ├── main.m
 ├── aura_mission.slx
-├── library/
-│   ├── library.slx
-│   ├── astroConstants.m
-│   └── slblocks.m
-└── project.m              # Legacy script; not the current entry point
+└── library/
+    ├── library.slx
+    ├── astroConstants.m
+    └── slblocks.m
 ```
 
 Open `main.m` in MATLAB and click **Run**. It adds the repository root and `library/` to the MATLAB path, loads `library/library.slx` using the script's absolute location, initializes the workspace, runs `aura_mission.slx`, and animates the body axes. No personal paths or external library files are required. Keep the directory structure above intact when moving or cloning the repository.
 
-`project.m` is an older script that still expects `project_lib.slx` and uses different workspace variable names. **Use `main.m`, not `project.m`, for the current model.**
+`main.m` is the sole simulation entry point; the obsolete `project.m` script has been removed.
+
+### Work in progress on this branch
+
+`bug/division-by-zero-313` preserves the experimental enabled-subsystem implementation in `Euler 312/313 Kinematics1`, including sampled mode selection. Initial-condition handover and the selected attitude output remain unfinished. This checkpoint is not a claim that the experimental subsystem is simulation-ready.
 
 - **Solver:** fixed-step fourth-order Runge–Kutta (`ode4`).
 - **Step:** 0.1 s.
