@@ -1,18 +1,12 @@
 # AURA — 6U CubeSat attitude dynamics and sensor modelling
 
-This README is a self-contained project handoff for a new contributor or AI assistant. It records the **actual saved implementation**, its intended behaviour, and known gaps separately. Read it before proposing changes; then inspect the current files because the model may have evolved.
+This README describes the project structure, model implementation, intended behaviour and known limitations. Inspect the current source files and model when making changes.
 
-## 1. Project context and active work
+## 1. Project context
 
 University spacecraft attitude dynamics project in **MATLAB and Simulink**, inspired by the **GOMX-4B** 6U CubeSat. This is an educational adaptation, not a reconstruction of flight software, CAD, calibration or telemetry.
 
 The scenario is an uncontrolled spacecraft starting at rest in a near-polar, approximately Sun-synchronous low Earth orbit. The model includes environmental disturbances and an experimental star-tracker measurement model. There is no implemented closed-loop attitude estimator/controller or magnetic-coil actuator in the inspected top-level model.
-
-**Branch being documented: `implement/star_sensor`.** At inspection its latest commit was `79aac22` (`Update aura_mission model`), following `c4ba890` (slew-rate limit and validity) and `55ad146` (star-tracker misalignment and accuracy). These are inspection anchors, not a requirement that HEAD stay there.
-
-Other local branches:
-- `main`: baseline spacecraft/environment implementation.
-- `bug/division-by-zero-313`: separate experimental enabled-integrator/Euler-switching work. Do not assume its `Euler 312/313 Kinematics1` architecture is present here or merge it implicitly. That branch's initial-condition handover implementation was subsequently rolled back during development.
 
 **Current priority:** understand and validate the star-tracker measurement model, especially rotation-error composition, axis conventions, sampling and invalid-measurement handling, before integrating an estimator.
 
@@ -26,12 +20,12 @@ sad/
 │   ├── library.slx        # Custom dynamics, kinematics and environment blocks
 │   ├── astroConstants.m   # Physical constants lookup
 │   └── slblocks.m         # Optional Library Browser registration: SAD Project
-└── project.m              # Legacy tracked script on this branch; do not run
+└── project.m              # Legacy script; do not run
 ```
 
-Use **`main.m`**, not `project.m`. The legacy file expects the old `project_lib.slx` and older variable/output names. Its presence on this branch does not make it the entry point. The library is now `library/library.slx`, and links refer to `library/...`.
+Use **`main.m`**, not `project.m`. The legacy file expects the old `project_lib.slx` and older variable/output names. Its presence in the repository does not make it the entry point. The library is now `library/library.slx`, and links refer to `library/...`.
 
-Requirements: MATLAB and Simulink; earlier execution was tested with R2026b. The current branch's sensor behaviour is not certified by those older tests. This README update inspected source, wiring and block parameters; it did **not** run a new full mission simulation or statistical sensor-validation suite.
+Requirements: MATLAB and Simulink; earlier execution was tested with R2026b. The sensor behaviour is not certified by those older tests. This README update inspected source, wiring and block parameters; it did **not** run a new full mission simulation or statistical sensor-validation suite.
 
 Open `main.m` and Run. It:
 1. Executes `clear`, `close all`, `clc`.
@@ -46,7 +40,7 @@ Open `main.m` and Run. It:
 - Pressing Run in Simulink therefore requires initialization in **the same MATLAB session** first. Run all parameter sections of `main.m` through `fixedStep`, stopping before the `sim` call if only initialization is wanted.
 - Running just the first section deletes variables via `clear` without rebuilding later parameters.
 - Names are case-sensitive: `fixedStep`, `e0`, `omega0`, `I_inv`, `j_B`, `A_mis_sT`.
-- AI/MCP MATLAB sessions and the user's desktop MATLAB have separate workspaces and loaded model copies, even when sharing disk files.
+- Separate MATLAB sessions have independent workspaces and loaded model copies, even when sharing disk files.
 - Do not use `main.m` as `InitFcn`: it calls `sim`, which can recursively launch simulation. A future automatic initializer should be parameter-only and contain neither `sim` nor `clear`.
 
 ## 3. Physical model, frames and truth path
@@ -216,17 +210,16 @@ Recommended validation, in order:
 - Confirm 1 Hz acquisition timestamps, held output and synchronized validity.
 - Only then integrate estimator/control and test against independently logged truth.
 
-## 7. Working conventions for another AI assistant
+## 7. Development guidelines
 
-- The user wants to learn the engineering as it is built. Explain actual block connections, equations, frames and units; avoid silently adding architecture beyond the request.
-- **Questions, reviews and explanations are read-only. Obtain permission before editing files/models.** This README is context, not standing authorization to modify the project.
-- Inspect the active branch, Git status and actual saved model first. Do not import conclusions from another branch or assume old block SIDs remain valid.
-- Save/close desktop models before branch changes. Uncommitted edits can follow branch switches; commits define branch snapshots. Never save a stale tool-session model over newer desktop edits.
+- Document block connections, equations, frames and units. Keep changes focused and avoid unrelated architectural additions.
+- Inspect Git status and the actual saved model first. Do not assume previous findings or old block SIDs remain valid.
+- Save pending model edits before replacing or reloading model files. Do not overwrite newer saved changes with a stale in-memory model.
 - Use `main.m` as the current entry point. Do not revive `project.m` or old `project_lib` references.
 - Distinguish intended behaviour, inspected implementation, structural checks and executed numerical tests. A successful compile is not proof of correct sensor statistics or physics.
-- Preserve user wiring and make small scoped edits. Back up SLX files before multi-step changes. Do not commit, push, merge or reset branches without authorization.
+- Preserve user wiring and make small scoped edits. Back up SLX files before multi-step changes. Do not commit, push, merge or discard work without authorization.
 - SLX files are tracked with **Git LFS** (`*.slx filter=lfs`). Install/initialize LFS before checkout/commit; otherwise apparent binary modifications or pointer-only files can mislead. `git lfs fsck` checks local object integrity.
-- If using the local MATLAB MCP tools, load referenced library definitions to inspect internals; `model_read` may expose only linked interfaces. Resolve exact paths/SIDs rather than guessing names containing `/`.
+- Inspect referenced library definitions when reviewing linked blocks. Resolve exact block paths or Simulink identifiers rather than guessing names containing `/`.
 
 ## 8. Mission references
 
