@@ -1,6 +1,6 @@
 # AURA — 6U CubeSat attitude dynamics and sensor modelling
 
-This README describes the project structure, model implementation, intended behaviour and known limitations. Inspect the current source files and model when making changes.
+This README describes the project structure, model implementation and intended behaviour. Inspect the current source files and model when making changes.
 
 ## 1. Project context
 
@@ -188,29 +188,7 @@ Inspect `who(out)`, `class`, `size`, timestamps and actual structure fields befo
 
 If the animation gets a single 3×3 matrix instead of a history, inspect upstream connectivity and logging rather than blindly changing indexing. Keep `A_BN` (truth) distinct from `Ab_n_star_tracker` (measurement).
 
-## 6. Known issues / next engineering steps
-
-These are findings from source/wiring inspection, **not newly fixed in this documentation update**:
-
-1. **Misalignment is added as a full near-identity matrix.** With zero misalignment angles and zero noise, the saved expression becomes `A_meas = A_true + I`, not `A_true`. Fix the intended composition before treating the output as a valid DCM.
-2. **First-order error matrices are not exact rotations.** Even after correcting additive composition, `I + skew(error)` generally is only approximately orthogonal. Decide on a consistent exact rotation/quaternion composition, or explicitly quantify the small-angle approximation. Do not add independent errors to nine DCM elements.
-3. **Axis/sign/frame conventions need reconciliation.** The script says 312 misalignment, the constructor has its own element pattern, and fi/psi noise paths are crossed. Establish sensor axes, boresight/roll axis, body-to-sensor transform, error frame and multiplication side before changing signs or channel mapping.
-4. **Accuracy scaling is not yet justified.** Verify `/3` from a 3-sigma specification and the additional `/sqrt(2)` against the chosen noise definition. Confirm independence of random streams; all three currently specify seed `0`.
-5. **Invalid measurement handling is previous-sample, not last-valid hold.** Define the desired acquisition-time behaviour, retain the last accepted measurement, and keep validity false for invalid acquisitions. Define startup behaviour if the first acquisition is invalid.
-6. **Validity is only a slew-rate criterion.** There is no implemented star-identification/optics model, field of view, Sun/Earth exclusion, processing latency or general dropout model. Do not describe the current sensor as a full star-tracker simulator.
-7. **Estimator and gyro interfaces remain unfinished.** Route measurement and validity together before adding attitude determination or feedback; never substitute noisy sensor attitude for truth in environmental calculations.
-8. **Workspace initialization remains manual when using Simulink Run.** Consider a separate parameter-only initializer only with explicit approval.
-
-Recommended validation, in order:
-- Zero-noise/zero-misalignment test: measured attitude equals truth.
-- Rotation checks: `A*A' ≈ I`, `det(A) ≈ +1`.
-- Known single-axis perturbations: verify signs, axis assignment and composition order.
-- Long fixed-attitude run: measure angular-error mean, standard deviation, cross-correlation and repeatability against the requested sensor statistics.
-- Rate sweep below, at and above the limit; prolonged invalid interval; first sample invalid; recovery.
-- Confirm 1 Hz acquisition timestamps, held output and synchronized validity.
-- Only then integrate estimator/control and test against independently logged truth.
-
-## 7. Development guidelines
+## 6. Development guidelines
 
 - Document block connections, equations, frames and units. Keep changes focused and avoid unrelated architectural additions.
 - Inspect Git status and the actual saved model first. Do not assume previous findings or old block SIDs remain valid.
@@ -221,7 +199,7 @@ Recommended validation, in order:
 - SLX files are tracked with **Git LFS** (`*.slx filter=lfs`). Install/initialize LFS before checkout/commit; otherwise apparent binary modifications or pointer-only files can mislead. `git lfs fsck` checks local object integrity.
 - Inspect referenced library definitions when reviewing linked blocks. Resolve exact block paths or Simulink identifiers rather than guessing names containing `/`.
 
-## 8. Mission references
+## 7. Mission references
 
 - [ESA: GOMX-4B mission overview](https://www.esa.int/Enabling_Support/Space_Engineering_Technology/Technology_CubeSats/GOMX-4B).
 - Holst et al., [*Attitude and Orbit Control Results of the GOMX-4 Tandem CubeSat Mission*](https://davidgerhardt.com/publications/GOMX4_IAC2018.pdf), IAC-18-B4.6B.11, 2018.
