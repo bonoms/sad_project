@@ -80,11 +80,13 @@ A_mis_sT = [1 fi_mis_sT -theta_mis_sT; % this should act also as any bias
             fi_mis_sT -psi_mis_sT 1];
 
 
-% Star tracker accuracy
+% Star tracker accuracy and tolerated slew rate
 
 fi_acc = deg2rad(0.02/3); % divided by 3 since it's reported as 3 sigma
 theta_acc = deg2rad(0.02/3);
 psi_acc = deg2rad(0.06/3); % accuray of roll axis assuming it's z
+
+max_slew_rate = deg2rad(0.3);
 
 %% Initial conditions
 
@@ -95,7 +97,7 @@ ta0 = 0;
 omegax0 = deg2rad(1);
 omegay0 = deg2rad(1);
 omegaz0 = deg2rad(1);
-omega0 = [omegax0; omegay0; omegaz0] * 0;
+omega0 = [omegax0; omegay0; omegaz0]*0;
 
 % Attitude
 e0 = [0 0 0]';
