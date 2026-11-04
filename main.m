@@ -69,6 +69,23 @@ rho_s = [0.15 0.5 0.5 0.5 0.5 0.5];
 % Diffuse reflection coefficients
 rho_d = [0.05 0.05 0.05 0.05 0.05 0.05];
 
+% Sensor misalignment matrix star tracker
+
+fi_mis_sT = 0.0000001; %given in 312 notation
+theta_mis_sT = 0.0000001;
+psi_mis_sT = 0.0000001;
+
+A_mis_sT = [1 fi_mis_sT -theta_mis_sT; % this should act also as any bias
+            -fi_mis_sT 1 psi_mis_sT;
+            fi_mis_sT -psi_mis_sT 1];
+
+
+% Star tracker accuracy
+
+fi_acc = deg2rad(0.02/3); % divided by 3 since it's reported as 3 sigma
+theta_acc = deg2rad(0.02/3);
+psi_acc = deg2rad(0.06/3); % accuray of roll axis assuming it's z
+
 %% Initial conditions
 
 % True anomaly
