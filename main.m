@@ -79,6 +79,11 @@ A_mis_sT = [1 fi_mis_sT -theta_mis_sT; % this should act also as any bias
             -fi_mis_sT 1 psi_mis_sT;
             fi_mis_sT -psi_mis_sT 1];
 
+% Sensor star tracker bias matrix
+
+sT_bias = zeros(3,3);
+
+
 
 % Star tracker accuracy and tolerated slew rate
 
