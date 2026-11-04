@@ -16,16 +16,15 @@ The scenario is an uncontrolled spacecraft starting at rest in a near-polar, app
 sad/
 ├── main.m                 # Current run script: parameters → simulation → animation
 ├── aura_mission.slx       # Main model, including sensors/star_tracker
-├── library/
-│   ├── library.slx        # Custom dynamics, kinematics and environment blocks
-│   ├── astroConstants.m   # Physical constants lookup
-│   └── slblocks.m         # Optional Library Browser registration: SAD Project
-└── project.m              # Legacy script; do not run
+└── library/
+    ├── library.slx        # Custom dynamics, kinematics and environment blocks
+    ├── astroConstants.m   # Physical constants lookup
+    └── slblocks.m         # Optional Library Browser registration: SAD Project
 ```
 
-Use **`main.m`**, not `project.m`. The legacy file expects the old `project_lib.slx` and older variable/output names. Its presence in the repository does not make it the entry point. The library is now `library/library.slx`, and links refer to `library/...`.
+Use **`main.m`** as the entry point. The custom library is `library/library.slx`, and links refer to `library/...`.
 
-Requirements: MATLAB and Simulink; earlier execution was tested with R2026b. The sensor behaviour is not certified by those older tests. This README update inspected source, wiring and block parameters; it did **not** run a new full mission simulation or statistical sensor-validation suite.
+Requirements: MATLAB and Simulink. Numerical checks were executed with R2026b. A three-orbit simulation completed before the gravity-gradient correction; the corrected gravity-gradient implementation and current tracker noise were subsequently tested separately. These checks do not establish full physical validation of the mission model.
 
 Open `main.m` and Run. It:
 1. Executes `clear`, `close all`, `clc`.
@@ -63,6 +62,8 @@ Environment(A_BN) → disturbance torque → dynamics → omega
 
 The active attitude block is the linked **`Euler 312/313 Kinematics`** from `library/Euler 312//313 Kinematics`, followed by a 312-to-DCM converter. The library contains switched Euler coordinates; this is not direct DCM-state integration. Euler 312 divides by `cos(theta312)`, while Euler 313 divides by `sin(theta313)`. A prior inactive-313 denominator guard is part of the baseline library; it does not remove Euler singularities generally.
 
+A constant-rate numerical test of the saved kinematics, using spherical inertia and zero disturbances, matched the exact rotation before the first handover but accumulated attitude lag across repeated handovers. At 1°/s about the first coordinate axis over 1,000 s, maximum attitude error was **1.10° with a 0.1 s step** and **0.55° with a 0.05 s step**. This is consistent with lost propagation during handovers; the precise reset/enable scheduling cause has not been established. Orthogonality alone does not detect this error, and reducing the step does not resolve its underlying cause.
+
 ### Current main.m parameters
 
 | Quantity | Variable / value |
@@ -86,7 +87,7 @@ Orbital distances use **km**; geometry, inertia and torques use **SI**, with tor
 ### Environmental disturbances
 
 - Keplerian orbital propagation with nonzero eccentricity.
-- Gravity-gradient torque.
+- Gravity-gradient torque: `M_GG = (3*mu_E/norm(r)^3) * cross(rhat_B, I*rhat_B)`, where `rhat_B` is the outward radial unit vector expressed in body coordinates. The current saved wiring uses `mu_E` in the numerator and the cubed radius in the denominator. A nonaligned initial-attitude test with other disturbances disabled agreed with an independent torque calculation to **8.9e-7 relative error**, using a 0.001 s finite-difference acceleration.
 - Residual magnetic-dipole torque using an Earth-dipole field model.
 - Solar radiation pressure (SRP), evaluated separately on six faces and summed.
 
@@ -115,7 +116,7 @@ Inputs:
 
 Outputs:
 - `Ab_n_star_tracker`: perturbed/sample-selected 3×3 matrix.
-- `valid_measure_bool`: numeric 0/1 validity indicator. Despite its name, the Switch uses double Constants; Boolean typing has not been established.
+- `valid_measure_bool`: numeric 0/1 validity indicator, implemented with double Constants. The subsystem annotation documents the intended validity behaviour and the instantaneous-rate approximation.
 
 ### Parameters in main.m
 
@@ -124,10 +125,10 @@ Outputs:
 | `fi_mis_sT`, `theta_mis_sT`, `psi_mis_sT` | Each `1e-7`; intended small-angle misalignment in radians, comment says 312 notation |
 | `fi_acc` | `deg2rad(0.02/3)` ≈ `1.1635528e-4 rad` |
 | `theta_acc` | Same as `fi_acc` |
-| `psi_acc` | `deg2rad(0.06/3)` ≈ `3.4906585e-4 rad`; script assumes roll axis is Z |
+| `psi_acc` | `deg2rad(0.06/3)` ≈ `3.4906585e-4 rad`; labelled roll accuracy, without a physical roll/boresight-axis definition |
 | `max_slew_rate` | `deg2rad(0.3)` ≈ `0.00523598776 rad/s` |
 
-The `/3` assumes the stated angular accuracies are **3-sigma** specifications. No sensor datasheet is currently cited for these values or the roll-axis assumption; treat them as modelling inputs requiring verification.
+The `/3` assumes the stated angular accuracies are **3-sigma** specifications. No sensor datasheet or physical sensor-frame/boresight convention is currently specified for these values; treat them as modelling inputs requiring verification.
 
 The script defines exactly:
 
@@ -137,16 +138,19 @@ A_mis_sT = [1           fi_mis_sT   -theta_mis_sT;
             fi_mis_sT -psi_mis_sT   1];
 ```
 
-Do not silently rewrite this when documenting: entry (3,1) uses `fi_mis_sT`, not `theta_mis_sT`. With equal current values this distinction is hidden.
+Entry (3,1) uses `fi_mis_sT`, not `theta_mis_sT`; equal current values hide this distinction. This is a first-order small-angle matrix, not an exact finite rotation. `sT_bias = zeros(3,3)` is a separately declared additive matrix bias.
 
 ### Noise and matrix construction
 
-Three Random Number blocks (`fi_noise`, `theta_noise1`, `psi_noise2`) have mean `0`, variance `1`, seed parameter `0`, and sample time **0.1 s**. Their Gain blocks multiply by `fi_acc/sqrt(2)`, `theta_acc/sqrt(2)`, `psi_acc/sqrt(2)` respectively. Thus each scalar stream's marginal standard deviation after scaling is the corresponding declared accuracy divided by `sqrt(2)`, not the declared accuracy itself. Distinct seeds/independence have not been verified.
+Three Random Number blocks have mean `0`, variance `1`, and sample time **0.1 s**, with distinct seeds:
 
-Actual wiring crosses the first and third labelled noise channels:
-- `psi_acc`-scaled noise → error subsystem input `fi`.
-- `theta_acc`-scaled noise → input `theta`.
-- `fi_acc`-scaled noise → input `psi`.
+| Random Number block | Seed | Gain | Error subsystem input |
+|---|---|---|---|
+| `fi_noise` | `2` | `psi_acc` | `psi` |
+| `theta_noise1` | `1` | `theta_acc` | `theta` |
+| `psi_noise2` | `0` | `fi_acc` | `fi` |
+
+The gains apply the declared standard deviations directly; there is no additional `/sqrt(2)` factor. Block names alone do not establish angular-axis meaning.
 
 `skew_symmetrix_matrix` (existing spelling) constructs the following matrix from its **port variables**:
 
@@ -156,7 +160,11 @@ E = [ 1   fi  -psi;
       psi -theta  1 ]
 ```
 
-The Matrix Multiply block computes **`A_BN * E`** (right multiplication). The next **Sum** block computes **`A_BN * E + A_mis_sT`**. This is the saved implementation, not an endorsed rotation-error model.
+The saved candidate measurement is **`A_mis_sT * A_BN * E + sT_bias`**: angular noise multiplies truth on the right, misalignment multiplies on the left, and the separate matrix bias is added afterwards. Right-side noise acts in the input/inertial coordinates of `A_BN`; left-side misalignment acts in its output coordinates. A physical sensor-frame interpretation requires an explicit mounting/boresight convention.
+
+For the convention `E ≈ I - skew(delta)`, the port-to-axis mapping is **`delta = [theta; psi; fi]`**, with axes meaning the first, second and third matrix coordinates—not an independently defined physical roll/pitch/yaw frame. The larger `psi_acc` uncertainty therefore acts about the second coordinate axis. This is not an axis-assignment defect without a conflicting physical frame definition.
+
+A fixed, identity-attitude test with zero disturbances evaluated **10,001 acquisition epochs**. Measured rotation-vector standard deviations about the first/second/third coordinates were **24.10 / 72.32 / 24.03 arcsec**, consistent with the configured amplitudes; maximum absolute sample cross-correlation was approximately **0.015**. This is a finite-sample statistical check, not proof of independence or datasheet accuracy. The first-order error construction is not exactly orthogonal; a prior mission run measured maximum tracker orthogonality error of **2.14e-6** in Frobenius norm.
 
 The result is sampled by `1Hz_sampler`, a Zero-Order Hold with **sample time 1 s**. Noise generation is therefore at 10 Hz while the attitude sample is held at 1 Hz; these are distinct settings and are not both controlled by `fixedStep`.
 
@@ -165,10 +173,12 @@ The result is sampled by `1Hz_sampler`, a Zero-Order Hold with **sample time 1 s
 `Vector Norm` computes `norm(w)`. Both selection Switches test **`norm(w) > max_slew_rate`**; equality is treated as valid.
 
 - At acceptable rate: output the current 1 Hz sampled matrix, validity `1`.
-- Above the limit: output a Unit Delay of the sampled matrix, validity `0`.
-- The Unit Delay has initial condition `eye(3,3)` and inherited sample time `-1` (from the sampled input).
+- Above the limit: output the stored selected measurement, validity `0`.
+- The Unit Delay receives feedback from the selection Switch output, not the raw sampler. Its initial condition is `eye(3,3)` and its sample time is inherited (`-1`). Before the first accepted measurement, identity is only a placeholder.
 
-**Important distinction:** the annotation says “last valid measure,” but the delay input is the raw sampler output, not a conditionally accepted measurement. It therefore stores the **previous sample**, even if that sample was also invalid. During prolonged invalidity, this is not a true last-valid-value hold. The slew-rate/validity paths are not explicitly sampled by the same 1 Hz hold, so synchronized acquisition/validity semantics remain to be designed.
+This feedback preserves the last accepted value through sustained invalidity. In the earlier three-orbit run, the measurement stayed exactly unchanged over **130,111 adjacent sample pairs with both validity values zero**. Separate zero-rate, exact-threshold and just-above-threshold tests confirmed the comparison boundary.
+
+As documented in the subsystem annotation, the rate check follows the upstream integration rate rather than modelling validity over a finite camera exposure. It is not explicitly sampled together with the 1 Hz candidate matrix. The flag therefore describes the instantaneous rate condition, not a fresh-acquisition event or a guarantee that the rate stayed acceptable throughout exposure. A future estimator must distinguish fresh accepted observations from held data.
 
 ### Sensor container
 
@@ -193,7 +203,7 @@ If the animation gets a single 3×3 matrix instead of a history, inspect upstrea
 - Document block connections, equations, frames and units. Keep changes focused and avoid unrelated architectural additions.
 - Inspect Git status and the actual saved model first. Do not assume previous findings or old block SIDs remain valid.
 - Save pending model edits before replacing or reloading model files. Do not overwrite newer saved changes with a stale in-memory model.
-- Use `main.m` as the current entry point. Do not revive `project.m` or old `project_lib` references.
+- Use `main.m` as the entry point.
 - Distinguish intended behaviour, inspected implementation, structural checks and executed numerical tests. A successful compile is not proof of correct sensor statistics or physics.
 - Preserve user wiring and make small scoped edits. Back up SLX files before multi-step changes. Do not commit, push, merge or discard work without authorization.
 - SLX files are tracked with **Git LFS** (`*.slx filter=lfs`). Install/initialize LFS before checkout/commit; otherwise apparent binary modifications or pointer-only files can mislead. `git lfs fsck` checks local object integrity.
