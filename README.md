@@ -209,7 +209,382 @@ If the animation gets a single 3×3 matrix instead of a history, inspect upstrea
 - SLX files are tracked with **Git LFS** (`*.slx filter=lfs`). Install/initialize LFS before checkout/commit; otherwise apparent binary modifications or pointer-only files can mislead. `git lfs fsck` checks local object integrity.
 - Inspect referenced library definitions when reviewing linked blocks. Resolve exact block paths or Simulink identifiers rather than guessing names containing `/`.
 
-## 7. Mission references
+## 7. Model walkthrough and exam study guide
+
+This section explains the active mission model from physical idea to signal wiring. It covers the substantial subsystems rather than elementary helpers such as Vector Norm. Equations describe the inspected implementation and its conventions; the numerical limitations documented above still apply.
+
+### 7.1 The complete model in one explanation
+
+The model asks: **how does an uncontrolled rigid spacecraft rotate under environmental torques, and what attitude would an imperfect star tracker report?** It separates four tasks:
+
+1. **Orbital geometry:** determine where the spacecraft is relative to Earth and the local orbital frame.
+2. **Environment:** calculate external torques in body coordinates from gravity gradient, the magnetic field and sunlight.
+3. **Dynamics and kinematics:** integrate torque into angular velocity, then angular velocity into orientation.
+4. **Measurement:** perturb and sample the true orientation without changing the underlying physical motion.
+
+```text
+main.m: physical constants, orbit, inertia, geometry, initial conditions, sensor parameters
+                                      |
+                                      v
+Environment
+  Orbit Propagator ── r ────────────┬──> Gravity Gradient Torque ──┐
+         |                         └──> Magnetic Field Torque ────┤
+         └── true anomaly ──> LVLH ───> Gravity Gradient Torque   ├──> Sum: M_B
+  Sun Direction + face geometry ──────> SRP Torque ───────────────┘       |
+         ^                                                             v
+         |                                                          dynamics
+         |                                                             |
+         |                                                             v
+         |                                                           omega_B
+         |                                                             |
+         |                                                   Euler 312/313 Kinematics
+         |                                                             |
+         |                                                   output in 312 coordinates
+         |                                                             |
+         └──────────────── A_BN <────────────────────── Euler 312 to DCM
+                              |
+                              ├──> truth logging and animation
+                              └──> star_tracker <── omega_B
+                                        |
+                               measurement + validity logging
+```
+
+The feedback from attitude to environment is **physical coupling, not attitude control**. For example, rotating the spacecraft changes which faces receive sunlight and how the magnetic field projects into body axes. Those changes modify torque and therefore subsequent motion. There is no desired-attitude reference, control error or commanded actuator torque in this loop.
+
+The integrators store the state, so the drawing is not simply an instantaneous circular calculation. At initialization, their initial conditions establish the starting orbit phase, angular velocity and attitude. During continuous integration the solver evaluates the coupled equations, including intermediate stages of `ode4`; the diagram should not be interpreted as every subsystem executing only once in a fixed left-to-right order per step.
+
+**A concise oral explanation:** “The orbit supplies environmental geometry. The environment produces body-frame disturbances. Euler's rigid-body equation gives angular acceleration, integrated into body rate. Euler-angle kinematics gives attitude, fed back to the environment. Separately, the sensor converts truth into noisy sampled measurements.”
+
+### 7.2 Frames, state variables and why dynamics is not kinematics
+
+| Quantity | Meaning | Role in the model |
+|---|---|---|
+| `r_N` | Earth-centred position expressed in inertial coordinates | Orbit output; used by environmental models |
+| `A_LN` | Maps inertial components to local orbital components | Supplies the radial direction for gravity gradient |
+| `A_BN` | Maps inertial components to body components | Common physical-attitude interface |
+| `omega_B = [w1; w2; w3]` | Body-relative-to-inertial angular velocity, expressed in the body frame | Integrated rotational dynamic state |
+| `e = [phi; theta; psi]` | Euler coordinates of orientation in a specified sequence | Integrated kinematic coordinates, not body-rate components |
+| `M_B` | Total external torque expressed in the body frame | Input to rotational dynamics |
+
+**Dynamics answers why the angular velocity changes; kinematics answers how the orientation changes given that angular velocity.** In general, `dot(e)` is not equal to `omega_B`: the relation depends on the current Euler angles and sequence.
+
+For an ideal DCM, `A_NB = A_BN.'`. A vector is transformed by multiplication, not by adding Euler angles. Matrix order matters: `A_BN * A_LN.'` maps local-orbit components to body components. Matrix rows of `A_BN` give the body axes expressed in inertial coordinates, explaining why `main.m` uses rows for its body-axis animation.
+
+The first, second and third coordinate axes have consistent array positions throughout the equations. Their physical identification with spacecraft hardware or tracker boresight requires a separate convention; the words roll, pitch and yaw do not supply that convention by themselves.
+
+### 7.3 Orbit Propagator — advance orbital phase, then reconstruct position
+
+**Location:** `Environment/Orbit Propagator`, linked to `library/Orbit Propagator`.
+
+**Inputs:** semimajor axis `a = sma`, eccentricity `e = ecc`, inclination `i = inc`, initial true anomaly `nu0 = ta0`, and gravitational parameter `mu = mu_E`. **Outputs:** inertial position vector `r_N` and true anomaly `nu`.
+
+**Idea.** In a two-body ellipse, orbital elements are constant but true anomaly does not advance uniformly. The spacecraft moves faster near perigee and slower near apogee. Instead of integrating all six Cartesian position/velocity components, this block integrates one scalar phase and reconstructs the position geometrically.
+
+The implemented equations are
+
+$$
+n=\sqrt{\frac{\mu}{a^3}},\qquad
+\dot\nu=\frac{n(1+e\cos\nu)^2}{(1-e^2)^{3/2}},\qquad
+r=\frac{a(1-e^2)}{1+e\cos\nu},
+$$
+
+$$
+\mathbf r_N=r\begin{bmatrix}\cos\nu\\\sin\nu\cos i\\\sin\nu\sin i\end{bmatrix}.
+$$
+
+**How the wiring implements it:**
+
+1. `mu/a^3` and a square root produce mean motion `n`.
+2. Feedback from the true-anomaly Integrator supplies `cos(nu)`.
+3. Products, sums and powers form the nonlinear `dot(nu)` expression.
+4. The Integrator starts at `ta0` and advances true anomaly.
+5. A separate algebraic branch forms radius magnitude and the inclined unit-position vector, then multiplies them.
+6. Position branches to gravity-gradient and magnetic torque; true anomaly branches to the LVLH frame block.
+
+The phase equation follows from conserved orbital angular momentum: `dot(nu) = h/r^2`, with `h = sqrt(mu*a*(1-e^2))`. This explains the squared factor in the numerator and why replacing it by constant `n` would be wrong for a noncircular orbit.
+
+**Assumptions to explain:** this active block has no RAAN or argument-of-perigee inputs; its position formula corresponds to those orientation angles being zero. It does not propagate J2 precession, drag, or orbit changes caused by disturbances. The near-Sun-synchronous inclination is an initial scenario choice, not a simulated Sun-synchronous precession mechanism. For nonzero eccentricity, its transverse orbital direction is not generally the exact velocity direction.
+
+### 7.4 LVLH Reference Frame — construct a moving orbital basis
+
+**Location:** `Environment/LVLH Reference Frame`, linked to `library/LVLH Reference Frame`.
+
+**Inputs:** inclination and true anomaly. **Output:** `A_LN`.
+
+**Idea.** Gravity gradient needs the Earth-radial direction expressed in the body, not just the distance from Earth. This block describes an orbital basis whose first axis points radially outward, second axis points transverse in the direction of increasing true anomaly, and third axis is the orbit normal. These are the conventions of this implementation; other definitions called LVLH can use different axis orders and signs.
+
+The matrix assembled from its rows is
+
+$$
+A_{LN}=\begin{bmatrix}
+\cos\nu&\sin\nu\cos i&\sin\nu\sin i\\
+-\sin\nu&\cos\nu\cos i&\cos\nu\sin i\\
+0&-\sin i&\cos i
+\end{bmatrix}.
+$$
+
+Sine/cosine blocks generate the shared terms. Products generate the mixed terms; Mux/Reshape blocks form rows; concatenation along dimension 1 assembles the matrix.
+
+The radial unit vector has local components `[1;0;0]`. Therefore
+
+$$
+\hat{\mathbf r}_B=A_{BN}A_{LN}^{T}\begin{bmatrix}1\\0\\0\end{bmatrix}.
+$$
+
+This is the actual frame-conversion chain used by the gravity-gradient subsystem. It is not a change to the spacecraft attitude state: it is another basis used to calculate a torque.
+
+### 7.5 Gravity Gradient Torque — differential gravity acting on an extended body
+
+**Location:** `Environment/Gravity Gradient Torque`, linked to `library/Gravity Gradient Torque`.
+
+**Inputs:** position, gravitational parameter, inertia, local-orbit DCM and body-attitude DCM. **Output:** gravity-gradient torque in body coordinates.
+
+**Idea.** The nearer and farther parts of the spacecraft experience slightly different gravitational acceleration. The resulting moment depends on the mass distribution and orientation relative to the Earth-radial direction. A point-mass orbital model alone cannot describe this rotational effect.
+
+$$
+\mathbf M_{GG,B}=\frac{3\mu}{r^3}\left[\hat{\mathbf r}_B\times(I\hat{\mathbf r}_B)\right].
+$$
+
+**Signal path:**
+
+1. Transpose `A_LN`, then multiply by `A_BN`.
+2. Apply that transformation to local `[1;0;0]` to obtain `rhat_B`.
+3. Multiply `rhat_B` by inertia.
+4. Compute `3*mu/r^3` from the orbit radius.
+5. The Cross Product receives the scaled radial vector first and `I*rhat_B` second, giving the equation above.
+
+The cross product vanishes when the radial direction is a principal inertia axis, or for spherical inertia `I = J*eye(3)`. This does not mean that every principal-axis radial orientation is dynamically stable; stability is a separate question. The orbit supplies radius and radial direction, while the attitude supplies how that direction appears to the spacecraft.
+
+**Units:** `mu_E` is in km³/s² and `r` is in km, so `mu_E/r^3` has units s⁻². Multiplication by SI inertia gives N·m; converting only one of `mu_E` or `r` would break consistency.
+
+### 7.6 Magnetic Field Torque — residual dipole in a rotating Earth field
+
+**Location:** `Environment/Magnetic Field Torque`, linked to `library/Magnetic Field Torque`.
+
+**Inputs:** inertial position, residual body dipole `j_B`, and true attitude. **Output:** magnetic torque in the body frame.
+
+**Idea.** A spacecraft can have a permanent or residual magnetic dipole even with no active magnetorquer. That dipole experiences a torque in Earth's field. The model approximates Earth by a tilted dipole rotating with Earth.
+
+Let `alpha` be the dipole tilt and `omega_E` the hardcoded Earth rotation rate. The Clock drives the inertial dipole-axis direction
+
+$$
+\hat{\mathbf m}_N(t)=\begin{bmatrix}
+\sin\alpha\cos(\omega_Et)\\
+\sin\alpha\sin(\omega_Et)\\
+\cos\alpha
+\end{bmatrix}.
+$$
+
+The field and torque calculations are
+
+$$
+\hat{\mathbf r}_N=\frac{\mathbf r_N}{\|\mathbf r_N\|},\qquad
+\mathbf B_N=H_0\left(\frac{R_{eq}}{r}\right)^3
+\left[3(\hat{\mathbf m}_N\cdot\hat{\mathbf r}_N)\hat{\mathbf r}_N-\hat{\mathbf m}_N\right],
+$$
+
+$$
+\mathbf B_B=A_{BN}\mathbf B_N,\qquad
+\mathbf M_{mag,B}=\mathbf j_B\times\mathbf B_B.
+$$
+
+**Wiring logic:** normalize position; take its dot product with the rotating dipole axis; multiply the result by three and the radial unit vector; subtract the dipole axis; scale by `H_0*R_eq^3/r^3`; transform to body coordinates; finally take the dipole–field cross product in that order.
+
+The block hardcodes `H_0 = 2.98059e-5`, `R_eq = 6.37813e3 km`, tilt `2.00712e-1 rad` and rotation rate `7.29210e-5 rad/s`. The symbol `H_0` is used as the field scale in this torque model; the dipole cross product requires magnetic flux density in tesla. The workspace constants with similar names do not automatically replace these hardcoded values.
+
+Torque vanishes for a dipole parallel to the field and is largest when perpendicular. Here `j_B` is a disturbance parameter, not a commanded coil current or implemented magnetic controller. The field is a simplified dipole model rather than a high-order geomagnetic model with date and geolocation inputs.
+
+### 7.7 Sun Direction and Solar Radiation Pressure — illumination, force, moment
+
+**Locations:** `library/Sun Direction` and `Environment/Solar Radiation Pressure Torque`, linked to `library/Solar Radiation Pressure`.
+
+**Idea.** Photons carry momentum. Absorbing and reflecting sunlight create forces on exposed faces. If a resultant force acts away from the centre of mass, it creates torque. The force depends on attitude because face illumination and reflection geometry change as the spacecraft rotates.
+
+The Sun Direction block uses simulation time to construct
+
+$$
+\lambda=\frac{2\pi t}{31558149.76},\qquad
+\hat{\mathbf s}_N=\begin{bmatrix}\cos\lambda\\\cos(0.4091)\sin\lambda\\\sin(0.4091)\sin\lambda\end{bmatrix}.
+$$
+
+This is a unit direction towards the Sun with fixed obliquity and uniform annual phase. It is not an ephemeris tied to a real launch date. The body direction is `s_B = A_BN*s_N`.
+
+For face `k`, define outward unit normal `n_k`, area `A_k`, lever arm `r_F,k`, specular coefficient `rho_s,k` and diffuse coefficient `rho_d,k`. The implemented force is
+
+$$
+u_k=\mathbf n_k\cdot\hat{\mathbf s}_B,\qquad
+q_k=\frac{1358}{299792458}\,A_k\max(u_k,0),
+$$
+
+$$
+\mathbf F_{k,B}=-q_k\left[(1-\rho_{s,k})\hat{\mathbf s}_B+
+\left(2\rho_{s,k}u_k+\frac{2}{3}\rho_{d,k}\right)\mathbf n_k\right],
+\qquad
+\mathbf M_{SRP,B}=\sum_k\mathbf r_{F,k}\times\mathbf F_{k,B}.
+$$
+
+Here `u_k` is the incidence cosine; `q_k` has units of force. The leading minus sign is appropriate because `s_B` points towards the Sun while incident photon momentum points away from it. Specular reflection changes momentum normal to the face; the diffuse term uses the implemented `2/3` factor. The coefficient on the Sun-direction term includes both absorption and the incident momentum associated with diffuse reflection.
+
+**How the subsystem is organized:**
+
+1. Reshape the area and optical-coefficient arrays into face-indexed data.
+2. The **For Each Subsystem** partitions inputs 1–5 by columns: one normal, optical-coefficient pair, area and lever arm per iteration. The attitude input is shared, not partitioned.
+3. Each iteration transforms the Sun direction and calculates incidence. A Switch outputs the incidence cosine only when positive, otherwise zero, so back-facing surfaces contribute no force.
+4. Products and sums form the absorption/reflection force; Gain `-1` sets its sign.
+5. Each face computes `cross(r_F,k, F_k)`.
+6. The outer Sum of Elements collapses dimension 2, summing face-torque columns into one three-component torque.
+
+An illuminated face can exert force but no moment if the lever arm is zero or parallel to that force. Setting a face area to zero removes its SRP contribution without removing the face from the arrays. Current assumptions include no eclipse, no self-shadowing, constant irradiance and fixed optical properties.
+
+### 7.8 Rotational dynamics — Euler's equation in body coordinates
+
+**Location:** `aura_mission/dynamics`. This is the active dynamics implementation; it is not simply the unused `library/Dynamics` block.
+
+**Inputs:** `omega0`, `I`, `I_inv` and total body torque `M`. **Output:** true body angular velocity `omega`.
+
+Angular momentum is `H_B = I*omega_B`. Because the body basis itself rotates, the torque is not merely `I*dot(omega_B)`:
+
+$$
+\mathbf M_B=I\dot{\boldsymbol\omega}_B+\boldsymbol\omega_B\times(I\boldsymbol\omega_B),
+\qquad
+\dot{\boldsymbol\omega}_B=I^{-1}\left[\mathbf M_B-\boldsymbol\omega_B\times(I\boldsymbol\omega_B)\right].
+$$
+
+**Actual wiring and its sign:**
+
+- Integrator output `omega` feeds `Matrix Multiply1`, producing `I*omega`.
+- The Cross Product receives **`I*omega` first and `omega` second**, so it outputs `(I*omega) × omega`.
+- The Sum adds this to `M`. This is correct because `(I*omega) × omega = -omega × (I*omega)`.
+- `Matrix Multiply2` applies `I_inv` to produce angular acceleration.
+- The Integrator starts from its external initial condition `omega0`; its output feeds kinematics, sensors, logging and the dynamic feedback calculation.
+
+Even with zero torque, a nonspherical rigid body can have changing body-frame angular-velocity components because of gyroscopic coupling. This does not imply changing inertial angular momentum. For spherical inertia the cross term vanishes, making constant torque-free body rate a useful verification case. The model assumes a rigid body with constant inertia and no internal momentum devices.
+
+### 7.9 Euler kinematics and DCM conversion — representing the same attitude
+
+**Locations:** `Euler 312/313 Kinematics`, its linked `Euler 312 Kinematics` and `Euler 313 Kinematics`, and the Euler/DCM conversion blocks.
+
+Use `e = [phi; theta; psi]` and body-rate components `[w1; w2; w3]`. Sequence 312 means successive rotations about axes 3, 1 and 2; sequence 313 repeats axis 3 after the axis-1 rotation. These are coordinate parameterizations, not three separate physical spacecraft motions that are simulated independently.
+
+#### Rate equations and integrators
+
+The configured 312 arithmetic implements
+
+$$
+\dot\phi=\frac{w_3\cos\psi-w_1\sin\psi}{\cos\theta},\qquad
+\dot\theta=w_1\cos\psi+w_3\sin\psi,
+$$
+$$
+\dot\psi=w_2-\tan\theta\,(w_3\cos\psi-w_1\sin\psi).
+$$
+
+The configured 313 arithmetic, when its denominator guards are not selected, implements
+
+$$
+\dot\phi=\frac{w_1\sin\psi+w_2\cos\psi}{\sin\theta},\qquad
+\dot\theta=w_1\cos\psi-w_2\sin\psi,
+$$
+$$
+\dot\psi=w_3-\frac{w_1\sin\psi+w_2\cos\psi}{\tan\theta}.
+$$
+
+Each block separates rates and angles with Demux blocks, forms the trigonometric combinations, gathers the three derivatives in a Mux, and integrates them. Its normal Integrator output provides both angle feedback and exported Euler angles.
+
+The formulas become singular when the coordinate mapping loses rank: for 312 at `cos(theta)=0`; for 313 at `sin(theta)=0`. This is a failure of the coordinates, not an infinite physical angular velocity. The 313 cotangent term should be understood through its limiting behaviour as well as the explicit block arithmetic.
+
+Some block labels do not match their configured operation: for example, `Cos2` is configured as `sin`, the 312 `Cos3` as `tan`, and `DCM to Euler 313/Asin` as `acos`. The equations above follow configuration and wiring, not those labels.
+
+#### Euler angles to DCM
+
+The converters are algebraic: they evaluate sine/cosine products, assemble nine entries, and Reshape the result into a 3×3 matrix using MATLAB column-major ordering. They add no integration state.
+
+With passive elementary rotations
+
+$$
+R_1(a)=\begin{bmatrix}1&0&0\\0&\cos a&\sin a\\0&-\sin a&\cos a\end{bmatrix},\quad
+R_2(a)=\begin{bmatrix}\cos a&0&-\sin a\\0&1&0\\\sin a&0&\cos a\end{bmatrix},\quad
+R_3(a)=\begin{bmatrix}\cos a&\sin a&0\\-\sin a&\cos a&0\\0&0&1\end{bmatrix},
+$$
+
+the implemented conventions are `A312 = R2(psi)*R1(theta)*R3(phi)` and `A313 = R3(psi)*R1(theta)*R3(phi)`. The rightmost rotation acts first. These formulas fix the signs and sequence more precisely than a generic phrase such as yaw–pitch–roll.
+
+#### DCM to Euler angles
+
+For matrix entries `Aij`, the saved converters extract
+
+| Output | 312 converter | 313 converter |
+|---|---|---|
+| `phi` | `atan2(-A21, A22)` | `atan2(A31, -A32)` |
+| `theta` | `asin(A23)` | `acos(A33)` |
+| `psi` | `atan2(-A13, A33)` | `atan2(A13, A23)` |
+
+The Reshape/Demux chain reads matrix entries in column-major order. `atan2` retains quadrant information that a simple ratio and `atan` would lose. Inverse trigonometric functions return a principal branch: different angle triples can represent the same DCM, and angle wrapping alone is not an attitude discontinuity. At the relevant singularities, individual Euler angles are not uniquely recoverable.
+
+### 7.10 Euler 312/313 switching — coordinate handover and reset logic
+
+**Idea.** Use a different Euler chart before the current chart approaches a singularity. The attitude must stay the same when the coordinates change; the incoming chart needs angles derived from the outgoing physical attitude, not copied components or a restart at the original initial attitude.
+
+**The actual saved architecture uses resettable integrators, not Enabled Subsystems.** The mode signal is the output of `Relay1`:
+
+| Relay mode | Selected output representation internally | 312 reset input | 313 reset input |
+|---|---|---|---|
+| `0` | 312 branch | `0` | `1` |
+| `1` | 313 branch | `1` | `0` |
+
+Both integrators are configured with **External reset = `level hold`**, external initial conditions, and a state port. A nonzero reset holds that integrator at its supplied initial condition; this is not equivalent to disabling all arithmetic in that branch. The 313 denominator guards substitute `1` while its reset input is positive, avoiding evaluation of its singular denominators in that inactive/reset-held state. This guard does not make active 313 coordinates globally nonsingular.
+
+**Trace the two paths separately:**
+
+1. **Mode selection:** `Selector` takes the second component of the 312 Integrator's exported state. `Abs` feeds the Relay. Its on threshold is **75°**, off threshold **70°**. Between thresholds the Relay retains its previous output. This hysteresis avoids rapid back-and-forth switching at one boundary. Selection is based on the 312 state, including its reset-held representation while 313 is selected—not on an independent 313 safety test.
+2. **Initialization/handover path:** the state-port outputs of both Integrators are converted to their respective DCMs. `Switch` selects the DCM according to mode. `DCM to Euler 1` converts the selected DCM to 312 angles; `IC` supplies `e0` initially and then passes its input. Another 312-to-DCM conversion creates a common attitude from which both 312 and 313 external initial-condition inputs are calculated.
+3. **Ordinary output path:** the normal angle outputs of both Integrators are converted to their respective DCMs. `Switch1` selects the physical attitude, and `DCM to Euler 2` exports it in **312 coordinates regardless of the internal mode**. The top-level 312-to-DCM block can therefore interpret the output consistently even while the 313 branch is selected.
+
+The Integrator's extra **state port is not angular velocity and not a simple one-step delay**. It exposes the integration state without that step's reset effect, allowing reset-feedback calculations to use a state value without depending directly on the post-reset output. It can differ from the normal output during reset handling. This distinction is central to understanding the separate handover and ordinary-output paths.
+
+**Important distinction for an exam:** the architecture's intention is continuous physical attitude with a change of coordinates; the constant-rate tests in Section 3 demonstrate that the current scheduling still accumulates propagation lag. Explain the intended handover and the measured limitation separately. Neither hysteresis nor valid DCM orthogonality proves correct handover timing.
+
+### 7.11 Star tracker — a measurement model, not a star-identification algorithm
+
+**Location:** `sensors/star_tracker`, including `skew_symmetrix_matrix`.
+
+**Idea.** Start from the known true attitude and emulate angular measurement uncertainty, mounting misalignment, additive matrix bias, acquisition rate and rejection at excessive slew. The subsystem does not render a star field, identify stars, solve Wahba's problem, or estimate attitude from camera pixels.
+
+**Follow the measurement path:**
+
+1. Three Gaussian sources generate unit-variance scalar noise; gains apply the angular standard deviations listed in Section 4.
+2. `skew_symmetrix_matrix` uses negative gains, Mux blocks for columns and matrix concatenation to construct `E = I - skew([theta; psi; fi])`. Although its name refers to skew symmetry, its output includes the identity; only `E-I` is skew-symmetric.
+3. Matrix products form `A_mis_sT*A_BN*E`. This models angular errors through composition rather than adding an identity-like matrix to truth. Left- and right-multiplication are not interchangeable.
+4. A Sum adds the separately declared `sT_bias`. This is an additive matrix error, not necessarily a pure angular bias or a stretch matrix; arbitrary choices can destroy rotation-matrix properties. It is currently zero.
+5. `1Hz_sampler` captures and holds the candidate every second. The 0.1 s noise-source period and the 1 s acquisition period are separate design choices.
+6. The output Switch compares true angular-speed magnitude against `max_slew_rate`. Excessive rate selects its **top input**, the stored value. Otherwise it selects its **bottom input**, the sampled candidate.
+7. The selected output feeds the Unit Delay, preserving it during rejection. The parallel validity Switch outputs `0` for excessive rate and `1` otherwise. Identity is the fallback before any accepted measurement exists.
+
+A concrete hold example: accept matrix A, then reject candidates B and C. Because feedback stores the **selected output**, the reported matrix remains A through both rejections. Delaying raw candidates instead would eventually report rejected B. Holding a matrix does not make it a current measurement: it becomes stale while the spacecraft continues rotating.
+
+The small-angle approximation drops second-order rotation terms, so a candidate is only approximately orthogonal even with zero additive bias. Random error, fixed misalignment and additive matrix bias are different mechanisms. Also distinguish the 1 Hz sampled candidate, the reported held matrix, the instantaneous validity level and a fresh-acquisition event. The annotation acknowledges that finite camera-exposure validity is not modelled.
+
+The sensor container logs the tracker output but does not yet supply an implemented estimator/controller. The gyro remains a placeholder and is not needed to explain the currently implemented tracker logic.
+
+### 7.12 Simulation, outputs and how to defend the model
+
+`main.m` initializes parameters, simulates for three nominal orbital periods with fixed-step fourth-order Runge–Kutta, and animates true attitude. The 0.1 s solver step controls continuous numerical integration; it does not redefine blocks with explicit sample periods. Held sensor values may be logged at successive solver timestamps even when the physical acquisition rate is slower. A long output array is therefore not evidence of an equally high measurement rate.
+
+The animation uses the rows of `A_BN` as body-axis directions in inertial space, displaying every 100th sample. This display stride is a visualization choice, not a solver or sensor setting. The animation displays truth, not noisy tracker measurements.
+
+A useful explanation order for an oral exam is:
+
+1. State the physical question, uncontrolled rigid-body assumptions and absence of active control.
+2. Define the frames, mapping direction of the DCM, units and initial conditions.
+3. Trace orbit → environmental torques → angular velocity → attitude → environmental feedback.
+4. Derive the dynamic cross-product sign and explain why Euler-angle rates differ from body rates.
+5. Explain Euler singularities, the coordinate-switching intention and actual reset/state-port wiring.
+6. Trace one environmental torque from physical mechanism to final body-frame moment.
+7. Separate measurement generation from truth and explain noise, sampling, rejection and staleness.
+8. Distinguish successful execution, matrix validity and agreement with independent physics. Cite the measured handover limitation rather than claiming a fully validated model.
+
+The library also contains alternative DCM/quaternion kinematics, a separate Dynamics block and a more general Keplerian Orbit block. Their presence does **not** mean the mission runs these alternatives: the active paths are those traced above. Elementary helper blocks are best understood in the equations they support rather than as separate physical subsystems.
+
+## 8. Mission references
 
 - [ESA: GOMX-4B mission overview](https://www.esa.int/Enabling_Support/Space_Engineering_Technology/Technology_CubeSats/GOMX-4B).
 - Holst et al., [*Attitude and Orbit Control Results of the GOMX-4 Tandem CubeSat Mission*](https://davidgerhardt.com/publications/GOMX4_IAC2018.pdf), IAC-18-B4.6B.11, 2018.
