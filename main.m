@@ -75,13 +75,13 @@ rho_d = [0.05 0.05 0.05 0.05 0.05 0.05];
 ta0 = 0;
 
 % Angular velocity
-omegax0 = deg2rad(5);
-omegay0 = deg2rad(10);
-omegaz0 = deg2rad(5);
+omegax0 = deg2rad(15);
+omegay0 = deg2rad(40);
+omegaz0 = deg2rad(20);
 omega0 = [omegax0; omegay0; omegaz0];
 
 % Attitude
-e0 = [0 deg2rad(83.9) 0]';
+e0 = [0 deg2rad(55) 0]';
 A0 = eye(3,3); % not necessary but to make dcm block work 
 
 %% Simulation
@@ -98,7 +98,7 @@ out = sim(fullfile(projectRoot, 'aura_mission.slx'), ...
     "FixedStep", "fixedStep", ...
     "ReturnWorkspaceOutputs", "on");
 
-% Data extracti
+% Data extraction
 N = length(out.tout);
 ts = out.tout;
 As_BN = out.A_BN;
