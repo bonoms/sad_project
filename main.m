@@ -69,16 +69,40 @@ rho_s = [0.15 0.5 0.5 0.5 0.5 0.5];
 % Diffuse reflection coefficients
 rho_d = [0.05 0.05 0.05 0.05 0.05 0.05];
 
+% Sensor misalignment matrix star tracker
+
+fi_mis_sT = 0.0000001; % given in 312 notation
+theta_mis_sT = 0.0000001;
+psi_mis_sT = 0.0000001;
+
+A_mis_sT = [1 fi_mis_sT -theta_mis_sT; % this should act also as any bias
+            -fi_mis_sT 1 psi_mis_sT;
+            fi_mis_sT -psi_mis_sT 1];
+
+% Sensor star tracker bias matrix
+
+sT_bias = zeros(3,3); % we should define a pure streching matrix
+
+
+
+% Star tracker accuracy and tolerated slew rate
+
+fi_acc = deg2rad(0.02/3); % divided by 3 since it's reported as 3 sigma
+theta_acc = deg2rad(0.02/3);
+psi_acc = deg2rad(0.06/3); % defined as roll axis
+
+max_slew_rate = deg2rad(0.3);
+
 %% Initial conditions
 
 % True anomaly
 ta0 = 0;
 
 % Angular velocity
-omegax0 = deg2rad(15);
-omegay0 = deg2rad(40);
-omegaz0 = deg2rad(20);
-omega0 = [omegax0; omegay0; omegaz0];
+omegax0 = deg2rad(1);
+omegay0 = deg2rad(1);
+omegaz0 = deg2rad(1);
+omega0 = [omegax0; omegay0; omegaz0]*0;
 
 % Attitude
 e0 = [0 deg2rad(55) 0]';
