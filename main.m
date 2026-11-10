@@ -12,20 +12,14 @@ load_system(fullfile(projectRoot, 'library', 'library.slx'));
 
 mu_E = astroConstants(13);
 R_E = astroConstants(23);
-f_E = astroConstants(43);
-Re_E = 3 * R_E / (3 - f_E); 
-omega_E = 2 * pi / (astroConstants(53) * 3600);
-eps_E = deg2rad(astroConstants(63));
-dipole_tilt_E = deg2rad(11.5);
-T_sun = 365.256363 * 24 * 3600;
 
 %% Spacecraft Orbital Parameters
 
 % Keplerian elements
 height = 2000;
 sma = R_E + height;
-ecc = 0;
-inc = deg2rad(0);
+ecc = 0.001;
+inc = deg2rad(30);
 raan = 0;
 aop = 0;
 
@@ -50,7 +44,11 @@ N_B = [ 1  0  0;
         0  1  0;
         0 -1  0;
         0  0  1;
-        0  0 -1]';
+        0  0 -1;
+       -1  0  0;    % Solar Panel A
+       -1  0  0;    % Solar Panel B
+        1  0  0;    % Solar Panel A Backside
+        1  0  0]';  % Solar Panel B Backside
 
 % Panel center points wrt geometric center
 r_geo = [ 15     0   0;
@@ -58,22 +56,28 @@ r_geo = [ 15     0   0;
            0    10   0;
            0   -10   0;
            0     0   5;
-           0     0  -5]' * 1e-2;
+           0     0  -5;
+         -15    25   0;              % Solar Panel A
+         -15   -25   0;              % Solar Panel B
+         -15    25   0;              % Solar Panel A Backside
+         -15   -25   0]' * 1e-2;     % Solar Panel B Backside
 
 % Center of mass position
-r_cm = [10; 0; 0] * 1e-2;
+r_cm = [10; 3; 0] * 1e-2;
 
 % Panel center points wrt center of mass
 r_F = r_geo - r_cm;
 
 % Panel areas
-Area  = [2 2 3 3 6 6] * 1e-2;
+Area  = [2 2 3 3 6 6 3 3 3 3] * 1e-2;
 
 % Specular reflection coefficients
-rho_s = [0.5 0.5 0.5 0.5 0.5 0.5];
+rho_s = [0 0 0 0 0.10 0.10 0.10 0.10 0 0];
 
 % Diffuse reflection coefficients
-rho_d = [0.05 0.05 0.05 0.05 0.05 0.05];
+rho_d = [0 0 0 0 0.25 0.25 0.25 0.25 0 0];
+
+%% Sensors data
 
 % Sensor misalignment matrix star tracker
 fi_mis_sT = 0.0000001; % given in 312 notation
@@ -100,15 +104,15 @@ max_slew_rate = deg2rad(0.3);
 ta0 = 0;
 
 % Angular velocity
-omega0 = [0.1 0.1 n]';
+omega0 = [deg2rad(1) deg2rad(1) deg2rad(1)]';
 
 % Attitude
-e0 = [0 0 deg2rad(20)]';
+e0 = [deg2rad(10) deg2rad(15) deg2rad(20)]';
 
 %% Simulation
 
 % Model Parameters
-usePerts = 0;
+usePerts = 1;
 
 % Simulation parameters
 stopTime = T;
