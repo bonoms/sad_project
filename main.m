@@ -76,7 +76,8 @@ rho_s = [0 0 0 0 0.10 0.10 0.10 0.10 0 0];
 
 % Diffuse reflection coefficients
 rho_d = [0 0 0 0 0.25 0.25 0.25 0.25 0 0];
-%%
+
+%% Sun Sensor
 G = 1361;
 etha = [0 0 0 0 0 0 0.25 0.25 0 0];
 packing = 0.8;
@@ -89,6 +90,7 @@ Ts     = 1e-3;
 D_w    = 0.01*P_max*sqrt(2*Ts);   % white
 D_p    = 0.005*P_max*sqrt(2*Ts);  % pink
 D_b    = 1e-4*P_max*sqrt(2*Ts);   % brown
+
 %% Sensors data
 
 % Sensor misalignment matrix star tracker
@@ -108,7 +110,6 @@ fi_acc = deg2rad(0.02 / 3); % divided by 3 since it's reported as 3 sigma
 theta_acc = deg2rad(0.02 / 3);
 psi_acc = deg2rad(0.06 / 3); % defined as roll axis
 
-err = [fi_acc;theta_acc;psi_acc];
 max_slew_rate = deg2rad(0.3);
 
 %% Initial conditions
@@ -125,7 +126,7 @@ e0 = [deg2rad(180) deg2rad(0) deg2rad(0)]';
 %% Simulation
 
 % Model Parameters
-usePerts = 1*0;
+usePerts = 1;
 
 % Simulation parameters
 stopTime = T;
@@ -133,7 +134,7 @@ fixedStep = 0.1;
 
 %% Simulink model
 
-out = sim(fullfile(projectRoot, 'prova_alessandro_progetto_sensor.slx'), ...
+out = sim(fullfile(projectRoot, 'aura_mission.slx'), ...
     "StopTime", "stopTime", ...
     "SolverType", "Fixed-step", ...
     "Solver", "ode4", ...
