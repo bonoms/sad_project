@@ -141,5 +141,66 @@ out = sim(fullfile(projectRoot, 'aura_mission.slx'), ...
     "FixedStep", "fixedStep", ...
     "ReturnWorkspaceOutputs", "on");
 
+% Data extraction
+N = length(out.tout);
+ts = out.tout;
+As_BN = out.A_BN;
+omega_B = out.omega_B';
+M = out.M';
+M_SRP = out.M_SRP';
+M_GG = out.M_GG';
+M_Magn = out.M_Magn';
+
+%% Visualization
+
+% Angular momentum
+H_B = I * omega_B;
+H_mag = vecnorm(H_B, 2, 1);
+
+H_N = zeros(3, N);
+for k = 1:N
+    H_N(:,k) = As_BN(:,:,k).' * H_B(:,k);
+end
+
+mag_dev = H_mag - H_mag(1);
+comp_dev = H_N - H_N(:,1);
+
+figure
+tiledlayout(2,1)
+
+nexttile
+plot(ts, mag_dev)
+grid on
+xlabel('Time [s]')
+ylabel('$\|\mathbf{H}_B\| - \|\mathbf{H}_B(0)\|$ [kg m$^2$/s]', 'Interpreter', 'latex')
+title('Angular momentum magnitude deviation (body frame)', 'Interpreter', 'latex')
+
+nexttile
+plot(ts, comp_dev)
+grid on
+xlabel('Time [s]')
+ylabel('$\mathbf{H}_N - \mathbf{H}_N(0)$ [kg m$^2$/s]', 'Interpreter', 'latex')
+legend('$H_x$', '$H_y$', '$H_z$', 'Interpreter', 'latex')
+title('Angular momentum components deviation (inertial frame)', 'Interpreter', 'latex')
+
+% Perturbations
+M_data = {M, M_GG, M_SRP, M_Magn};
+M_titles = {'Total torque', 'Gravity gradient torque', 'SRP torque', 'Magnetic torque'};
+
+figure
+tiledlayout(2,2)
+
+for i = 1:4
+    m = M_data{i};
+
+    nexttile
+    plot(ts, m)
+    grid on
+    xlabel('Time [s]')
+    ylabel('$\mathbf{M}$ [N m]', 'Interpreter', 'latex')
+    title(M_titles{i}, 'Interpreter', 'latex')
+    legend('$M_x$', '$M_y$', '$M_z$', 'Interpreter', 'latex')
+end
+
 
 
