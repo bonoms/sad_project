@@ -76,7 +76,19 @@ rho_s = [0 0 0 0 0.10 0.10 0.10 0.10 0 0];
 
 % Diffuse reflection coefficients
 rho_d = [0 0 0 0 0.25 0.25 0.25 0.25 0 0];
+%%
+G = 1361;
+etha = [0 0 0 0 0 0 0.25 0.25 0 0];
+packing = 0.8;
 
+P_vec = G*Area.*etha*packing;
+P_max  = sum(P_vec);
+k_scale  = 0.02;
+bias_P   = 0.005*P_max;  
+Ts     = 1e-3;
+D_w    = 0.01*P_max*sqrt(2*Ts);   % white
+D_p    = 0.005*P_max*sqrt(2*Ts);  % pink
+D_b    = 1e-4*P_max*sqrt(2*Ts);   % brown
 %% Sensors data
 
 % Sensor misalignment matrix star tracker
@@ -96,6 +108,7 @@ fi_acc = deg2rad(0.02 / 3); % divided by 3 since it's reported as 3 sigma
 theta_acc = deg2rad(0.02 / 3);
 psi_acc = deg2rad(0.06 / 3); % defined as roll axis
 
+err = [fi_acc;theta_acc;psi_acc];
 max_slew_rate = deg2rad(0.3);
 
 %% Initial conditions
@@ -104,15 +117,15 @@ max_slew_rate = deg2rad(0.3);
 ta0 = 0;
 
 % Angular velocity
-omega0 = [deg2rad(1) deg2rad(1) deg2rad(1)]';
+omega0 = [deg2rad(0) deg2rad(0) n]';
 
 % Attitude
-e0 = [deg2rad(10) deg2rad(15) deg2rad(20)]';
+e0 = [deg2rad(180) deg2rad(0) deg2rad(0)]';
 
 %% Simulation
 
 % Model Parameters
-usePerts = 1;
+usePerts = 1*0;
 
 % Simulation parameters
 stopTime = T;
@@ -120,71 +133,12 @@ fixedStep = 0.1;
 
 %% Simulink model
 
-out = sim(fullfile(projectRoot, 'aura_mission.slx'), ...
+out = sim(fullfile(projectRoot, 'prova_alessandro_progetto_sensor.slx'), ...
     "StopTime", "stopTime", ...
     "SolverType", "Fixed-step", ...
     "Solver", "ode4", ...
     "FixedStep", "fixedStep", ...
     "ReturnWorkspaceOutputs", "on");
 
-% Data extraction
-N = length(out.tout);
-ts = out.tout;
-As_BN = out.A_BN;
-omega_B = out.omega_B';
-M = out.M';
-M_SRP = out.M_SRP';
-M_GG = out.M_GG';
-M_Magn = out.M_Magn';
 
-%% Visualization
-
-% Angular momentum
-H_B = I * omega_B;
-H_mag = vecnorm(H_B, 2, 1);
-
-H_N = zeros(3, N);
-for k = 1:N
-    H_N(:,k) = As_BN(:,:,k).' * H_B(:,k);
-end
-
-mag_dev = H_mag - H_mag(1);
-comp_dev = H_N - H_N(:,1);
-
-figure
-tiledlayout(2,1)
-
-nexttile
-plot(ts, mag_dev)
-grid on
-xlabel('Time [s]')
-ylabel('$\|\mathbf{H}_B\| - \|\mathbf{H}_B(0)\|$ [kg m$^2$/s]', 'Interpreter', 'latex')
-title('Angular momentum magnitude deviation (body frame)', 'Interpreter', 'latex')
-
-nexttile
-plot(ts, comp_dev)
-grid on
-xlabel('Time [s]')
-ylabel('$\mathbf{H}_N - \mathbf{H}_N(0)$ [kg m$^2$/s]', 'Interpreter', 'latex')
-legend('$H_x$', '$H_y$', '$H_z$', 'Interpreter', 'latex')
-title('Angular momentum components deviation (inertial frame)', 'Interpreter', 'latex')
-
-% Perturbations
-M_data = {M, M_GG, M_SRP, M_Magn};
-M_titles = {'Total torque', 'Gravity gradient torque', 'SRP torque', 'Magnetic torque'};
-
-figure
-tiledlayout(2,2)
-
-for i = 1:4
-    m = M_data{i};
-
-    nexttile
-    plot(ts, m)
-    grid on
-    xlabel('Time [s]')
-    ylabel('$\mathbf{M}$ [N m]', 'Interpreter', 'latex')
-    title(M_titles{i}, 'Interpreter', 'latex')
-    legend('$M_x$', '$M_y$', '$M_z$', 'Interpreter', 'latex')
-end
 
