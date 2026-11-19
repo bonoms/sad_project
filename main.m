@@ -77,6 +77,20 @@ rho_s = [0 0 0 0 0.10 0.10 0.10 0.10 0 0];
 % Diffuse reflection coefficients
 rho_d = [0 0 0 0 0.25 0.25 0.25 0.25 0 0];
 
+%% Sun Sensor
+G = 1361;
+etha = [0 0 0 0 0 0 0.25 0.25 0 0];
+packing = 0.8;
+
+P_vec = G*Area.*etha*packing;
+P_max  = sum(P_vec);
+k_scale  = 0.02;
+bias_P   = 0.005*P_max;  
+Ts     = 1e-3;
+D_w    = 0.01*P_max*sqrt(2*Ts);   % white
+D_p    = 0.005*P_max*sqrt(2*Ts);  % pink
+D_b    = 1e-4*P_max*sqrt(2*Ts);   % brown
+
 %% Sensors data
 
 % Sensor misalignment matrix star tracker
@@ -104,10 +118,10 @@ max_slew_rate = deg2rad(0.3);
 ta0 = 0;
 
 % Angular velocity
-omega0 = [deg2rad(1) deg2rad(1) deg2rad(1)]';
+omega0 = [deg2rad(0) deg2rad(0) n]';
 
 % Attitude
-e0 = [deg2rad(10) deg2rad(15) deg2rad(20)]';
+e0 = [deg2rad(180) deg2rad(0) deg2rad(0)]';
 
 %% Simulation
 
@@ -187,4 +201,6 @@ for i = 1:4
     title(M_titles{i}, 'Interpreter', 'latex')
     legend('$M_x$', '$M_y$', '$M_z$', 'Interpreter', 'latex')
 end
+
+
 
