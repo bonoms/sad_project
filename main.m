@@ -77,7 +77,9 @@ rho_s = [0 0 0 0 0.10 0.10 0.10 0.10 0 0];
 % Diffuse reflection coefficients
 rho_d = [0 0 0 0 0.25 0.25 0.25 0.25 0 0];
 
-%% Sun Sensor
+%% SENSORS
+
+% SUN SENSOR
 G = 1361;
 etha = [0 0 0 0 0 0 0.25 0.25 0 0];
 packing = 0.8;
@@ -91,26 +93,37 @@ D_w    = 0.01*P_max*sqrt(2*Ts);   % white
 D_p    = 0.005*P_max*sqrt(2*Ts);  % pink
 D_b    = 1e-4*P_max*sqrt(2*Ts);   % brown
 
-%% Sensors data
+% STAR TRACKER
+% all accuracies are given in the sense of rotation 
 
-% Sensor misalignment matrix star tracker
 fi_mis_sT = 0.0000001; % given in 312 notation
 theta_mis_sT = 0.0000001;
 psi_mis_sT = 0.0000001;
 
 A_mis_sT = [1 fi_mis_sT -theta_mis_sT; % this should act also as any bias
-            -fi_mis_sT 1 psi_mis_sT;
-            fi_mis_sT -psi_mis_sT 1];
+    -fi_mis_sT 1 psi_mis_sT;
+    fi_mis_sT -psi_mis_sT 1];
 
-% Sensor star tracker bias matrix
-sT_bias = zeros(3,3); % we should define a pure stretching matrix
+% Sensor star tracker bias matrix<
+
+sigma_bias = deg2rad(0.0004);
+
+bias_1 = sigma_bias*randn();
+bias_2 = sigma_bias*randn();
+bias_3 = sigma_bias*randn();
+
+sT_bias = diag([bias_1, bias_2, bias_3]);  % pure streching matrix
+
 
 % Star tracker accuracy and tolerated slew rate
-fi_acc = deg2rad(0.02 / 3); % divided by 3 since it's reported as 3 sigma
-theta_acc = deg2rad(0.02 / 3);
-psi_acc = deg2rad(0.06 / 3); % defined as roll axis
 
-max_slew_rate = deg2rad(0.3);
+% fi teta are 0.02 and psi is 0.06
+
+fi_acc = deg2rad(0.2/3); % divided by 3 since it's reported as 3 sigma
+theta_acc = deg2rad(0.2/3);
+psi_acc = deg2rad(0.6/3); % defined as roll axis
+
+max_slew_rate = deg2rad(90); %% original of star sensor is 0.3
 
 %% Initial conditions
 
