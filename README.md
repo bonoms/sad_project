@@ -206,7 +206,7 @@ If the animation gets a single 3×3 matrix instead of a history, inspect upstrea
 - Use `main.m` as the entry point.
 - Distinguish intended behaviour, inspected implementation, structural checks and executed numerical tests. A successful compile is not proof of correct sensor statistics or physics.
 - Preserve user wiring and make small scoped edits. Back up SLX files before multi-step changes. Do not commit, push, merge or discard work without authorization.
-- SLX files are tracked with **Git LFS** (`*.slx filter=lfs`). Install/initialize LFS before checkout/commit; otherwise apparent binary modifications or pointer-only files can mislead. `git lfs fsck` checks local object integrity.
+- Git stores current SLX files as binary blobs. MATLAB's `mlAutoMerge` driver can merge edits in separate subsystems. Configure it locally with `comparisons.ExternalSCMLink.setupGitConfig()`. Older revisions and stashes that contain LFS pointers still require Git LFS.
 - Inspect referenced library definitions when reviewing linked blocks. Resolve exact block paths or Simulink identifiers rather than guessing names containing `/`.
 
 ## 7. Model walkthrough and exam study guide
